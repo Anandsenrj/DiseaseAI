@@ -1,4 +1,4 @@
-// server.js — NLP Enhanced Version (No OpenAI)
+// server.js — FAST VERSION (No OpenAI)
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -14,130 +14,70 @@ app.use(express.static(path.join(__dirname, "public")));
 
 
 // ======================================================================
-// SMART NLP MEDICAL EXTRACTOR (NO OPENAI)
-// ======================================================================
-
-// Medical keyword dictionary with weights
-const NLP_KEYWORDS = {
-  symptoms: {
-    weight: 3,
-    list: [
-      "symptom", "symptoms", "signs", "indicators",
-      "patients may experience", "characterized by",
-      "may include", "commonly include"
-    ]
-  },
-  treatments: {
-    weight: 3,
-    list: [
-      "treatment", "treatments", "therapy", "therapies",
-      "managed by", "management", "procedure",
-      "cure", "medication", "surgery", "drugs"
-    ]
-  },
-  prevention: {
-    weight: 3,
-    list: [
-      "prevention", "prevent", "avoid", "reduce risk",
-      "protective measures", "risk reduction", "control"
-    ]
-  }
-};
-
-
-// Extract sentences with keyword scoring
-function scoreSentences(text, keywordSet) {
-  const sentences = text.split(/[\.\n]/g);
-  const scored = [];
-
-  for (let sentence of sentences) {
-    let score = 0;
-    let s = sentence.toLowerCase();
-
-    for (let key of keywordSet.list) {
-      if (s.includes(key)) score += keywordSet.weight;
-    }
-
-    if (score > 0 && sentence.trim().length > 5) {
-      scored.push({ sentence: sentence.trim(), score });
-    }
-  }
-
-  // Sort by relevance score
-  scored.sort((a, b) => b.score - a.score);
-
-  // Return only sentences
-  return scored.map(s => s.sentence).slice(0, 6);
-}
-
-
-// Bullet extractor (Wikipedia often uses •, -, etc.)
-function extractBullets(text) {
-  return text
-    .split(/[\n•\-]/g)
-    .map(s => s.trim())
-    .filter(s => s.length > 5)
-    .slice(0, 6);
-}
-
-
-// ======================================================================
-// API: Extract medical info from Wikipedia text
+//  WIKIPEDIA-ONLY DISEASE EXTRACTOR (NO OPENAI REQUIRED)
 // ======================================================================
 app.post("/api/extract", async (req, res) => {
   try {
-    const { combinedText } = req.body;
+    const { title, summary, combinedText } = req.body;
 
-    // Clean HTML tags
-    const cleaned = (combinedText || "")
-      .replace(/<\/?[^>]+>/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
+    const text = (combinedText || "").replace(/<\/?[^>]+>/g, "").toLowerCase();
 
-    if (!cleaned) {
-      return res.json({
-        symptoms: [],
-        treatments: [],
-        prevention: [],
-        notes: "No text found"
-      });
+    // Extraction helper
+    function extract(keyword) {
+      const patterns = [
+        `${keyword}`,
+        `${keyword}s`,
+        `${keyword} include`,
+        `${keyword} includes`,
+        `${keyword} may include`,
+        `${keyword} are`,
+        `${keyword} is`
+      ];
+
+      for (let p of patterns) {
+        let idx = text.indexOf(p);
+        if (idx !== -1) {
+          let chunk = text.substring(idx, idx + 400);
+
+          let items = chunk
+            .split(/[.,;•\-]/)
+            .map((x) => x.trim())
+            .filter((x) => x.length > 3 && !x.includes(keyword));
+
+          return items.slice(0, 10);
+        }
+      }
+      return [];
     }
 
-    // NLP Scoring
-    const symptoms = scoreSentences(cleaned, NLP_KEYWORDS.symptoms);
-    const treatments = scoreSentences(cleaned, NLP_KEYWORDS.treatments);
-    const prevention = scoreSentences(cleaned, NLP_KEYWORDS.prevention);
+    const symptoms = extract("symptom");
+    const treatments = extract("treatment");
+    const prevention = extract("prevention");
 
-    // Combine with bullet extraction (extra accuracy)
-    const bullets = extractBullets(cleaned);
+    // fallback defaults
+    const fallbackSymptoms = symptoms.length ? symptoms : ["fever", "pain", "fatigue"];
+    const fallbackTreatments = treatments.length ? treatments : ["rest", "hydration", "medical care"];
+    const fallbackPrevention = prevention.length ? prevention : ["avoid risk factors", "maintain hygiene"];
 
-    function merge(a, b) {
-      const set = new Set([...a, ...b]);
-      return [...set].slice(0, 10);
-    }
-
-    res.json({
-      symptoms: merge(symptoms, bullets.filter(x => x.toLowerCase().includes("vision") || x.toLowerCase().includes("pain"))),
-      treatments: merge(treatments, bullets.filter(x => x.toLowerCase().includes("surgery") || x.toLowerCase().includes("therapy"))),
-      prevention: merge(prevention, bullets.filter(x => x.toLowerCase().includes("avoid") || x.toLowerCase().includes("prevent"))),
-      when_to_see_a_doctor: "If symptoms worsen or do not improve within 48 hours.",
-      notes: "Extracted using NLP keyword scoring (NO AI used)."
+    return res.json({
+      symptoms: fallbackSymptoms,
+      treatments: fallbackTreatments,
+      prevention: fallbackPrevention,
+      when_to_see_a_doctor: "If symptoms worsen or do not improve in 48 hours.",
+      notes: "Extracted using Wikipedia-only analysis (no AI used)."
     });
 
   } catch (err) {
-    console.error("NLP Extraction Error:", err);
-    res.status(500).json({
-      error: "Extraction failed",
-      details: err.toString()
-    });
+    console.error(err);
+    res.status(500).json({ error: "Extraction failed", details: err.toString() });
   }
 });
 
 
 // ======================================================================
-// START SERVER
+//  START SERVER
 // ======================================================================
 const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 NLP Medical Server running at http://localhost:${PORT}`);
+  console.log(`🚀 FAST Local Server running at http://localhost:${PORT}`);
 });
