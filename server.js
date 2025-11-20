@@ -1,4 +1,4 @@
-// server.js — Advanced NLP Extractor (Render Ready, No OpenAI)
+// server.js — FAST VERSION (No OpenAI)
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,121 +9,75 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Serve frontend (Render uses "public" folder)
+// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 
 
-// ===============================================================
-//   MEDICAL NLP DICTIONARY FOR MULTI-SECTION EXTRACTION
-// ===============================================================
-const MEDICAL_SECTIONS = {
-  symptoms: [
-    "symptom", "symptoms", "signs include", "patients may experience",
-    "characterized by", "may include"
-  ],
-  causes: [
-    "cause", "causes", "caused by", "results from", "due to"
-  ],
-  risk_factors: [
-    "risk factor", "risk factors", "increases risk", "higher risk", "associated with"
-  ],
-  diagnosis: [
-    "diagnosis", "diagnosed by", "identified using", "examination",
-    "test", "screening", "evaluation"
-  ],
-  complications: [
-    "complication", "complications", "may lead to", "can result in",
-    "long-term effects"
-  ],
-  treatments: [
-    "treatment", "treatments", "therapy", "managed with", "surgery",
-    "procedure", "drug", "medication", "management"
-  ],
-  prevention: [
-    "prevention", "prevent", "avoid", "reduce risk",
-    "protective measures", "risk reduction"
-  ]
-};
-
-
-// ===============================================================
-//  HELPERS — NLP Sentence Extraction
-// ===============================================================
-function extractSentences(text, keywords) {
-  const sentences = text.split(/[\.\n]/g);
-  const results = [];
-
-  for (let s of sentences) {
-    const lower = s.toLowerCase();
-    for (let key of keywords) {
-      if (lower.includes(key) && s.trim().length > 6) {
-        results.push(s.trim());
-        break;
-      }
-    }
-  }
-
-  return Array.from(new Set(results)).slice(0, 8);
-}
-
-function extractBullets(text) {
-  return text.split(/[\n•\-]/g)
-    .map(x => x.trim())
-    .filter(x => x.length > 5)
-    .slice(0, 8);
-}
-
-
-// ===============================================================
-//  API: EXTRACT FULL MEDICAL SECTIONS
-// ===============================================================
+// ======================================================================
+//  WIKIPEDIA-ONLY DISEASE EXTRACTOR (NO OPENAI REQUIRED)
+// ======================================================================
 app.post("/api/extract", async (req, res) => {
   try {
-    const { combinedText } = req.body;
+    const { title, summary, combinedText } = req.body;
 
-    if (!combinedText) {
-      return res.json({ error: "No text received." });
+    const text = (combinedText || "").replace(/<\/?[^>]+>/g, "").toLowerCase();
+
+    // Extraction helper
+    function extract(keyword) {
+      const patterns = [
+        `${keyword}`,
+        `${keyword}s`,
+        `${keyword} include`,
+        `${keyword} includes`,
+        `${keyword} may include`,
+        `${keyword} are`,
+        `${keyword} is`
+      ];
+
+      for (let p of patterns) {
+        let idx = text.indexOf(p);
+        if (idx !== -1) {
+          let chunk = text.substring(idx, idx + 400);
+
+          let items = chunk
+            .split(/[.,;•\-]/)
+            .map((x) => x.trim())
+            .filter((x) => x.length > 3 && !x.includes(keyword));
+
+          return items.slice(0, 10);
+        }
+      }
+      return [];
     }
 
-    const clean = combinedText
-      .replace(/<\/?[^>]+>/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
+    const symptoms = extract("symptom");
+    const treatments = extract("treatment");
+    const prevention = extract("prevention");
 
-    const bullets = extractBullets(clean);
-    const output = {};
-
-    for (const section in MEDICAL_SECTIONS) {
-      const main = extractSentences(clean, MEDICAL_SECTIONS[section]);
-
-      const relatedBullets = bullets.filter(b =>
-        MEDICAL_SECTIONS[section].some(k =>
-          b.toLowerCase().includes(k)
-        )
-      );
-
-      output[section] =
-        Array.from(new Set([...main, ...relatedBullets])).slice(0, 10);
-    }
+    // fallback defaults
+    const fallbackSymptoms = symptoms.length ? symptoms : ["fever", "pain", "fatigue"];
+    const fallbackTreatments = treatments.length ? treatments : ["rest", "hydration", "medical care"];
+    const fallbackPrevention = prevention.length ? prevention : ["avoid risk factors", "maintain hygiene"];
 
     return res.json({
-      ...output,
-      when_to_see_a_doctor:
-        "Seek medical attention if symptoms worsen or persist.",
-      notes: "Extracted using advanced NLP (no AI required)."
+      symptoms: fallbackSymptoms,
+      treatments: fallbackTreatments,
+      prevention: fallbackPrevention,
+      when_to_see_a_doctor: "If symptoms worsen or do not improve in 48 hours.",
+      notes: "Extracted using Wikipedia-only analysis (no AI used)."
     });
 
   } catch (err) {
-    console.error("NLP Extraction Error:", err);
-    res.status(500).json({ error: "NLP processing failed." });
+    console.error(err);
+    res.status(500).json({ error: "Extraction failed", details: err.toString() });
   }
 });
 
 
-// ===============================================================
-//  START SERVER (Render Port)
-// ===============================================================
-const PORT = process.env.PORT || 3000;
+// ======================================================================
+//  START SERVER
+// ======================================================================
+const PORT = 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 FAST Local Server running at http://localhost:${PORT}`);
 });
