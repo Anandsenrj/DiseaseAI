@@ -9,32 +9,67 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// API route NOT using OpenAI
-app.post("/api/extract", async (req, res) => {
-  const { title, summary, combinedText } = req.body;
+function extractSection(text, keywords) {
+  const lines = text.split(/\n|\. /);
+  const results = [];
 
-  // simple extraction logic
-  const symptoms = [];
-  const treatments = [];
-  const prevention = [];
-
-  const text = (combinedText || "").toLowerCase();
-
-  // very basic rule-based extraction (still works)
-  const lines = text.split(/\n|\./);
-
-  for (const line of lines) {
-    if (line.includes("symptom")) symptoms.push(line.trim());
-    if (line.includes("treat")) treatments.push(line.trim());
-    if (line.includes("prevent")) prevention.push(line.trim());
+  for (let line of lines) {
+    const lower = line.toLowerCase();
+    for (let key of keywords) {
+      if (lower.includes(key)) {
+        if (!results.includes(line.trim())) {
+          results.push(line.trim());
+        }
+      }
+    }
   }
 
+  return results.slice(0, 8);
+}
+
+app.post("/api/extract", async (req, res) => {
+  const { combinedText } = req.body;
+  const text = (combinedText || "").toLowerCase();
+
+  // Multiple synonyms to improve extraction
+  const symptoms = extractSection(combinedText, [
+    "symptom",
+    "signs",
+    "characterized by",
+    "may include",
+    "usually includes"
+  ]);
+
+  const treatments = extractSection(combinedText, [
+    "treatment",
+    "treat",
+    "therapy",
+    "managed",
+    "management",
+    "cure",
+    "medication",
+    "drug",
+    "surgery",
+    "procedure",
+    " intervention"
+  ]);
+
+  const prevention = extractSection(combinedText, [
+    "prevention",
+    "prevent",
+    "reduce the risk",
+    "avoid",
+    "protective",
+    "control",
+    "risk reduction"
+  ]);
+
   res.json({
-    symptoms: symptoms.slice(0, 6),
-    treatments: treatments.slice(0, 6),
-    prevention: prevention.slice(0, 6),
+    symptoms,
+    treatments,
+    prevention,
     when_to_see_a_doctor: "Consult a doctor if symptoms worsen.",
-    notes: "Extracted using rule-based engine (no AI)."
+    notes: "Enhanced rule-based extraction (no AI used)."
   });
 });
 
