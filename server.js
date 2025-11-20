@@ -1,4 +1,4 @@
-// server.js — Advanced NLP Medical Extractor (NO AI)
+// server.js — Advanced NLP Extractor (Render Ready, No OpenAI)
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,12 +9,12 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Serve frontend
+// Serve frontend (Render uses "public" folder)
 app.use(express.static(path.join(__dirname, "public")));
 
 
 // ===============================================================
-//   MEDICAL NLP DICTIONARY
+//   MEDICAL NLP DICTIONARY FOR MULTI-SECTION EXTRACTION
 // ===============================================================
 const MEDICAL_SECTIONS = {
   symptoms: [
@@ -28,31 +28,33 @@ const MEDICAL_SECTIONS = {
     "risk factor", "risk factors", "increases risk", "higher risk", "associated with"
   ],
   diagnosis: [
-    "diagnosis", "diagnosed by", "identified using", "examination", "test", "screening"
+    "diagnosis", "diagnosed by", "identified using", "examination",
+    "test", "screening", "evaluation"
   ],
   complications: [
-    "complication", "complications", "may lead to", "can result in"
+    "complication", "complications", "may lead to", "can result in",
+    "long-term effects"
   ],
   treatments: [
-    "treatment", "treatments", "therapy", "managed with",
-    "surgery", "procedure", "drug", "medication"
+    "treatment", "treatments", "therapy", "managed with", "surgery",
+    "procedure", "drug", "medication", "management"
   ],
   prevention: [
-    "prevention", "prevent", "avoid", "reduce risk", "protective measures"
+    "prevention", "prevent", "avoid", "reduce risk",
+    "protective measures", "risk reduction"
   ]
 };
 
 
 // ===============================================================
-//  HELPERS: NLP Sentence Extraction
+//  HELPERS — NLP Sentence Extraction
 // ===============================================================
-function extractSection(text, keywords) {
+function extractSentences(text, keywords) {
   const sentences = text.split(/[\.\n]/g);
   const results = [];
 
   for (let s of sentences) {
     const lower = s.toLowerCase();
-
     for (let key of keywords) {
       if (lower.includes(key) && s.trim().length > 6) {
         results.push(s.trim());
@@ -61,11 +63,11 @@ function extractSection(text, keywords) {
     }
   }
 
-  return Array.from(new Set(results)).slice(0, 8); // unique + limit
+  return Array.from(new Set(results)).slice(0, 8);
 }
 
 function extractBullets(text) {
-  return text.split(/[\n•\-•]/g)
+  return text.split(/[\n•\-]/g)
     .map(x => x.trim())
     .filter(x => x.length > 5)
     .slice(0, 8);
@@ -73,7 +75,7 @@ function extractBullets(text) {
 
 
 // ===============================================================
-//  API ENDPOINT — EXTRACT FULL MEDICAL SECTIONS
+//  API: EXTRACT FULL MEDICAL SECTIONS
 // ===============================================================
 app.post("/api/extract", async (req, res) => {
   try {
@@ -89,38 +91,39 @@ app.post("/api/extract", async (req, res) => {
       .trim();
 
     const bullets = extractBullets(clean);
-
-    // Build final structured output
     const output = {};
 
     for (const section in MEDICAL_SECTIONS) {
-      const base = extractSection(clean, MEDICAL_SECTIONS[section]);
+      const main = extractSentences(clean, MEDICAL_SECTIONS[section]);
 
-      // Merge bullet points related to that category
       const relatedBullets = bullets.filter(b =>
-        MEDICAL_SECTIONS[section].some(k => b.toLowerCase().includes(k))
+        MEDICAL_SECTIONS[section].some(k =>
+          b.toLowerCase().includes(k)
+        )
       );
 
-      output[section] = Array.from(new Set([...base, ...relatedBullets])).slice(0, 10);
+      output[section] =
+        Array.from(new Set([...main, ...relatedBullets])).slice(0, 10);
     }
 
     return res.json({
       ...output,
-      when_to_see_a_doctor: "See a doctor if symptoms worsen or persist.",
-      notes: "Extracted using advanced NLP (no AI)."
+      when_to_see_a_doctor:
+        "Seek medical attention if symptoms worsen or persist.",
+      notes: "Extracted using advanced NLP (no AI required)."
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("NLP Extraction Error:", err);
     res.status(500).json({ error: "NLP processing failed." });
   }
 });
 
 
 // ===============================================================
-//  START SERVER
+//  START SERVER (Render Port)
 // ===============================================================
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Advanced Medical NLP Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
