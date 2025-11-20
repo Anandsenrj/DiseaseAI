@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Disease Finder — Smooth Animated</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- html2canvas + jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+
+    /* ---------- PAGE FADE + SLIDE ---------- */
+    .page-enter {
+      animation: fadeSlide 0.6s ease both;
+    }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    body {
+      background: linear-gradient(180deg, #e6f0ff, #fafbff);
+      font-family: Inter, sans-serif;
+    }
+
+    .glass {
+      background: rgba(255,255,255,0.88);
+      border: 1px solid rgba(255,255,255,0.5);
+      backdrop-filter: blur(12px);
+    }
+
+    /* ---------- SOFT FLOAT EFFECT ---------- */
+    .float-soft {
+      transition: transform .35s ease, box-shadow .35s ease;
+    }
+    .float-soft:hover {
+      transform: translateY(-6px) scale(1.01);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.20);
+    }
+
+    /* ---------- INPUT FOCUS ANIMATION ---------- */
+    .input-animate {
+      transition: box-shadow .3s ease, transform .3s ease;
+    }
+    .input-animate:focus {
+      transform: scale(1.02);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.4);
+    }
+
+    /* ---------- BUTTON ANIMATION ---------- */
+    .btn-animate {
+      transition: transform .25s ease, background-color .25s ease;
+    }
+    .btn-animate:hover {
+      transform: translateY(-3px);
+    }
+
+    /* ---------- IMAGE FLOAT ---------- */
+    .img-float {
+      animation: floatImage 4s ease-in-out infinite;
+    }
+    @keyframes floatImage {
+      0%   { transform: translateY(0); }
+      50%  { transform: translateY(-8px); }
+      100% { transform: translateY(0); }
+    }
+
+  </style>
+</head>
+
+<body class="page-enter">
+
+  <div class="max-w-4xl mx-auto p-6">
+
+    <!-- HEADER -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-4xl font-bold text-slate-900">
+        Disease Finder <span class="text-indigo-600">AI</span>
+      </h1>
+
+      <button id="pdfBtn"
+        class="btn-animate bg-indigo-600 text-white px-4 py-2 rounded-lg shadow">
+        Save PDF
+      </button>
+    </div>
+
+    <!-- SEARCH BOX -->
+    <input id="query"
+      class="w-full p-4 rounded-xl border glass text-slate-900 outline-none input-animate"
+      placeholder="Type disease name..."
+      autocomplete="off" />
+
+    <button onclick="searchDisease()"
+      class="w-full mt-3 bg-indigo-600 text-white font-semibold p-3 rounded-xl btn-animate hover:bg-indigo-700">
+      🔍 Search Disease
+    </button>
+
+    <!-- OUTPUT BOX -->
+    <div id="output" class="mt-6 glass p-6 rounded-2xl">
+      <p class="text-center text-slate-600">Search a disease to see full details.</p>
+    </div>
+  </div>
+
+<script>
+
+/* ---------------- SEARCH ---------------- */
+async function searchDisease() {
+  const q = document.getElementById("query").value.trim();
+  const out = document.getElementById("output");
+
+  if (!q) return alert("Enter a disease name.");
+
+  out.innerHTML = `<p class='text-center'>⏳ Searching Wikipedia…</p>`;
+
+  const wikipedia = await fetch(
+    "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(q)
+  );
+
+  if (!wikipedia.ok) {
+    out.innerHTML = `<p class='text-center text-red-600'>Not found.</p>`;
+    return;
+  }
+
+  const summary = await wikipedia.json();
+  const img = summary.thumbnail?.source || "";
+
+  out.innerHTML = `<p class='text-center'>🤖 Extracting AI details…</p>`;
+
+  const ai = await (await fetch("/api/extract", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      title: summary.title,
+      summary: summary.extract,
+      combinedText: summary.extract
+    })
+  })).json();
+
+  out.innerHTML = `
+    <div id="reportCard" class="result-card float-soft grid md:grid-cols-3 gap-4 items-start bg-white/80 p-4 rounded-xl shadow">
+
+      <div class="text-center">
+        ${img 
+          ? `<img src="${img}" class="disease-img img-float mb-3 shadow" />`
+          : `<div class="disease-img bg-gray-200 flex items-center justify-center mb-3">No Image</div>`}
+
+        <h2 class="text-xl font-semibold">${summary.title}</h2>
+
+        <a target="_blank" href="${summary.content_urls.desktop.page}"
+          class="text-indigo-600 underline text-sm">
+          View Wikipedia
+        </a>
+      </div>
+
+      <div class="md:col-span-2">
+        <p>${summary.extract}</p>
+
+        <h3 class="mt-4 font-semibold text-indigo-600">Symptoms</h3>
+        <ul class="list-disc ml-5 text-sm">${(ai.symptoms||[]).map(x=>`<li>${x}</li>`).join("")}</ul>
+
+        <h3 class="mt-4 font-semibold text-indigo-600">Treatments</h3>
+        <ul class="list-disc ml-5 text-sm">${(ai.treatments||[]).map(x=>`<li>${x}</li>`).join("")}</ul>
+
+        <h3 class="mt-4 font-semibold text-indigo-600">Prevention</h3>
+        <ul class="list-disc ml-5 text-sm">${(ai.prevention||[]).map(x=>`<li>${x}</li>`).join("")}</ul>
+      </div>
+
+    </div>
+  `;
+}
+
+/* ---------------- PDF EXPORT ---------------- */
+document.getElementById("pdfBtn").onclick = async () => {
+  const card = document.getElementById("reportCard");
+  if (!card) return alert("Search a disease first!");
+
+  const canvas = await html2canvas(card, { scale: 2 });
+  const img = canvas.toDataURL("image/png");
+
+  const pdf = new jspdf.jsPDF("p", "mm", "a4");
+  const width = 190;
+  const height = (canvas.height * width) / canvas.width;
+
+  pdf.addImage(img, "PNG", 10, 10, width, height);
+  pdf.save("Disease_Report.pdf");
+};
+
+</script>
+
+</body>
+</html>
